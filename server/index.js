@@ -13,9 +13,9 @@ app.get("/api/health", (_request, response) => {
 });
 
 app.post("/api/orders", async (request, response) => {
-  const gmailUser = process.env.GMAIL_USER;
-  const gmailAppPassword = process.env.GMAIL_APP_PASSWORD;
-  const notificationEmail = process.env.ORDER_NOTIFICATION_EMAIL ?? gmailUser;
+  const gmailUser = process.env.GMAIL_USER?.trim();
+  const gmailAppPassword = process.env.GMAIL_APP_PASSWORD?.replace(/\s+/g, "");
+  const notificationEmail = process.env.ORDER_NOTIFICATION_EMAIL?.trim() ?? gmailUser;
 
   if (!gmailUser || !gmailAppPassword || !notificationEmail) {
     response.status(500).json({
@@ -131,8 +131,14 @@ Subtotal: Rs ${Number(subtotal).toLocaleString()}
     response.json({ ok: true });
   } catch (error) {
     console.error("Order email failed:", error);
+    const debugMessage =
+      process.env.NODE_ENV !== "production"
+        ? [error?.code, error?.responseCode, error?.command, error?.message].filter(Boolean).join(" | ")
+        : undefined;
+
     response.status(500).json({
       message: "Failed to send order email. Check Gmail app password and SMTP settings.",
+      debug: debugMessage,
     });
   }
 });
