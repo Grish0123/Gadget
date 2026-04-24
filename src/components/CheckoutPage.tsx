@@ -1,3 +1,4 @@
+import emailjs from "@emailjs/browser";
 import { useState, type FormEvent } from "react";
 import type { Product } from "../data/products";
 
@@ -60,6 +61,9 @@ export function CheckoutPage({
   const [submitState, setSubmitState] = useState<SubmitState>("idle");
   const [submitMessage, setSubmitMessage] = useState("");
   const formatPrice = (price: number) => `Rs ${price.toLocaleString()}`;
+  const emailJsServiceId = import.meta.env.VITE_EMAILJS_SERVICE_ID;
+  const emailJsTemplateId = import.meta.env.VITE_EMAILJS_TEMPLATE_ID;
+  const emailJsPublicKey = import.meta.env.VITE_EMAILJS_PUBLIC_KEY;
 
   if (items.length === 0) {
     return (
@@ -77,36 +81,49 @@ export function CheckoutPage({
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+
+    if (!emailJsServiceId || !emailJsTemplateId || !emailJsPublicKey) {
+      setSubmitState("error");
+      setSubmitMessage(
+        "EmailJS is not configured yet. Add VITE_EMAILJS_SERVICE_ID, VITE_EMAILJS_TEMPLATE_ID, and VITE_EMAILJS_PUBLIC_KEY to .env.",
+      );
+      return;
+    }
+
     setSubmitState("submitting");
-    setSubmitMessage("Sending order details to Gmail...");
+    setSubmitMessage("Sending your order...");
 
     try {
-      const response = await fetch("/api/orders", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
+      const orderLines = items
+        .map(
+          (item, index) =>
+            `${index + 1}. ${item.name} (${item.category}) - Qty: ${item.quantity} - Rs ${(item.price * item.quantity).toLocaleString()}`,
+        )
+        .join("\n");
+
+      await emailjs.send(
+        emailJsServiceId,
+        emailJsTemplateId,
+        {
+          customer_first_name: form.firstName,
+          customer_last_name: form.lastName,
+          customer_email: form.email,
+          contact_number: form.contactNumber,
+          alternate_contact: form.alternateContact || "N/A",
+          country: "Nepal",
+          province: form.province,
+          city: form.city,
+          area: form.area,
+          postal_code: form.postalCode || "N/A",
+          landmark: form.landmark || "N/A",
+          order_lines: orderLines,
+          subtotal: formatPrice(subtotal),
+          item_count: items.length,
         },
-        body: JSON.stringify({
-          customer: {
-            ...form,
-            country: "Nepal",
-          },
-          items: items.map((item) => ({
-            name: item.name,
-            category: item.category,
-            price: item.price,
-            quantity: item.quantity,
-            total: item.price * item.quantity,
-          })),
-          subtotal,
-        }),
-      });
-
-      const result = (await response.json()) as { message?: string };
-
-      if (!response.ok) {
-        throw new Error(result.message ?? "Unable to send order email.");
-      }
+        {
+          publicKey: emailJsPublicKey,
+        },
+      );
 
       setSubmitState("success");
       setSubmitMessage("Order email sent successfully.");
@@ -114,7 +131,7 @@ export function CheckoutPage({
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unable to send order email.";
       setSubmitState("error");
-      setSubmitMessage(message);
+      setSubmitMessage(message || "Unable to send order email through EmailJS.");
     }
   };
 
